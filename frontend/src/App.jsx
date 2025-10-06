@@ -1,7 +1,7 @@
 import React from 'react';
 import Interview from './pages/Interview';
-import AdminList from './admin/AdminList';
-import AdminSession from './admin/AdminSession';
+import AdminList from './pages/AdminList';
+import AdminSession from './pages/AdminSession';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';

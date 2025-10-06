@@ -1,0 +1,5 @@
+Timestamp,Event,Details
+Mon Oct 06 2025 18:41:08 GMT+0530 (India Standard Time),SESSION_START,{}
+Mon Oct 06 2025 18:41:34 GMT+0530 (India Standard Time),VIDEO_UPLOADED,"{""path"":""/uploads/68e3bfda3eeccc99a3317f80.webm""}"
+Mon Oct 06 2025 18:41:34 GMT+0530 (India Standard Time),SESSION_END,{}
+Mon Oct 06 2025 18:41:44 GMT+0530 (India Standard Time),NO_FACE,"{""durationMs"":10156}"
