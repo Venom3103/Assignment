@@ -1,0 +1,10 @@
+Timestamp,Event,Details
+Tue Oct 07 2025 21:01:03 GMT+0530 (India Standard Time),SESSION_START,{}
+Tue Oct 07 2025 21:01:16 GMT+0530 (India Standard Time),UNAUTHORIZED_ITEM,"{""label"":""cell phone"",""score"":0.9423691034317017,""bbox"":[689.0961456298828,339.82086181640625,389.83489990234375,241.8069362640381]}"
+Tue Oct 07 2025 21:01:16 GMT+0530 (India Standard Time),VIDEO_UPLOADED,"{""path"":""/uploads/68e5322762f8cc7edec9d782.webm""}"
+Tue Oct 07 2025 21:01:16 GMT+0530 (India Standard Time),SESSION_END,{}
+Tue Oct 07 2025 21:01:26 GMT+0530 (India Standard Time),NO_FACE,"{""durationMs"":10183}"
+Tue Oct 07 2025 21:01:36 GMT+0530 (India Standard Time),NO_FACE,"{""durationMs"":10019}"
+Tue Oct 07 2025 21:01:46 GMT+0530 (India Standard Time),NO_FACE,"{""durationMs"":10193}"
+Tue Oct 07 2025 21:01:56 GMT+0530 (India Standard Time),NO_FACE,"{""durationMs"":10010}"
+Tue Oct 07 2025 21:02:06 GMT+0530 (India Standard Time),NO_FACE,"{""durationMs"":10108}"
