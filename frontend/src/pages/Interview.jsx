@@ -1,7 +1,20 @@
 import React, { useRef, useEffect, useState } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
-import { Button, Card, CardContent, CardHeader, Chip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Typography,
+  Divider,
+} from '@mui/material';
 import * as tf from '@tensorflow/tfjs';
 import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detection';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
@@ -18,7 +31,7 @@ export default function Interview() {
   const modelObjRef = useRef(null);
 
   const [sessionId, setSessionId] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle | starting | running | stopping | error
+  const [status, setStatus] = useState('idle');
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [events, setEvents] = useState([]);
   const [reportModal, setReportModal] = useState({ open: false, pdf: null, csv: null });
@@ -43,7 +56,6 @@ export default function Interview() {
 
         await tf.ready();
         modelObjRef.current = await cocoSsd.load();
-
         modelFaceRef.current = await faceLandmarksDetection.createDetector(
           faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
           { runtime: 'tfjs', modelType: 'full' }
@@ -63,7 +75,6 @@ export default function Interview() {
     setEvents(prev => [ev, ...prev]);
     try { await axios.post(`${API_BASE}/api/events`, ev); } catch {}
     try { socketRef.current && socketRef.current.emit('event', ev); } catch {}
-    // End interview immediately for misconduct
     if (['LOOK_AWAY', 'MULTIPLE_FACES', 'UNAUTHORIZED_ITEM'].includes(type)) {
       await endInterviewAndUpload();
     }
@@ -138,11 +149,9 @@ export default function Interview() {
       if (now - lastTick < 200) { requestAnimationFrame(frame); return; }
       lastTick = now;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       try {
         const faces = await faceDetector.estimateFaces(video, { flipHorizontal: false });
         const nowMs = Date.now();
-
         if (!faces || faces.length === 0) {
           if (nowMs - lastFaceSeenAt.current > NO_FACE_THRESHOLD) {
             await postEvent('NO_FACE', { durationMs: nowMs - lastFaceSeenAt.current });
@@ -151,13 +160,11 @@ export default function Interview() {
         } else {
           lastFaceSeenAt.current = nowMs;
           if (faces.length > 1) await postEvent('MULTIPLE_FACES', { count: faces.length });
-
           faces.forEach(f => {
             ctx.beginPath();
             f.keypoints.forEach((kp, i) => { if (i === 0) ctx.moveTo(kp.x, kp.y); else ctx.lineTo(kp.x, kp.y); });
-            ctx.strokeStyle = 'lime'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.strokeStyle = '#00FFB2'; ctx.lineWidth = 1.5; ctx.stroke();
           });
-
           try {
             const kp = faces[0].keypoints;
             const left = kp[33], right = kp[263], nose = kp[1] || kp[4];
@@ -172,16 +179,17 @@ export default function Interview() {
             } else lookAwayStart.current = null;
           } catch {}
         }
-
         if (nowMs - lastObjectDetectAt.current > OBJECT_INTERVAL) {
           lastObjectDetectAt.current = nowMs;
           const preds = await objModel.detect(video);
           preds.forEach(p => {
             const [x, y, w, h] = p.bbox;
-            ctx.strokeStyle = 'red'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-            ctx.font = '14px Arial'; ctx.fillStyle = 'red';
+            ctx.strokeStyle = 'rgba(255, 60, 60, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            ctx.font = '14px Poppins';
+            ctx.fillStyle = '#FF3C3C';
             ctx.fillText(p.class, x, y > 10 ? y - 6 : 10);
-
             const label = p.class.toLowerCase();
             if (['cell phone', 'phone', 'book', 'notebook', 'laptop', 'tablet', 'paper'].some(k => label.includes(k)) && p.score > 0.55) {
               postEvent('UNAUTHORIZED_ITEM', { label: p.class, score: p.score, bbox: p.bbox });
@@ -203,52 +211,77 @@ export default function Interview() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4">
-      <div className="lg:col-span-2">
-        <Card className="shadow-lg rounded-xl overflow-hidden">
-          <CardHeader title="Candidate Camera" subheader={sessionId ? `Session ${sessionId}` : 'Initializing...'} />
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Video Section */}
+        <Card className="lg:col-span-2 bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl">
+          <CardHeader
+            title={<Typography variant="h6" className="text-white font-semibold">Candidate Camera</Typography>}
+            subheader={<span className="text-gray-400">{sessionId ? `Session: ${sessionId}` : 'Initializing...'}</span>}
+          />
+          <Divider className="border-white/10" />
           <CardContent className="relative">
-            <video ref={videoRef} width={900} height={560} playsInline muted className="w-full bg-black rounded" />
+            <video ref={videoRef} width={900} height={560} playsInline muted className="w-full rounded-xl bg-black border border-white/10" />
             <canvas ref={canvasRef} width={900} height={560} className="absolute top-0 left-0 w-full h-full pointer-events-none" />
-            <div className="mt-4 flex items-center gap-3">
-              <Button variant="contained" color="primary" onClick={startInterview} disabled={!modelsLoaded || status !== 'idle'}>
-                {modelsLoaded ? 'Start Interview' : <CircularProgress size={18} />}
+            <div className="mt-6 flex flex-wrap gap-3 items-center">
+              <Button
+                variant="contained"
+                sx={{ bgcolor: '#00E676', '&:hover': { bgcolor: '#00C853' } }}
+                onClick={startInterview}
+                disabled={!modelsLoaded || status !== 'idle'}
+              >
+                {modelsLoaded ? 'Start Interview' : <CircularProgress size={18} sx={{ color: 'white' }} />}
               </Button>
-              <Button variant="outlined" color="error" onClick={endInterviewAndUpload}>End & Upload</Button>
-              <Button variant="text" onClick={generateReportAndShow}>Generate Report</Button>
-              <Chip label={status === 'running' ? 'Running' : status === 'starting' ? 'Starting' : 'Idle'} color={status === 'running' ? 'success' : 'default'} />
+              <Button variant="contained" color="error" onClick={endInterviewAndUpload}>End & Upload</Button>
+              <Button variant="outlined" sx={{ color: 'white', borderColor: 'white' }} onClick={generateReportAndShow}>
+                Generate Report
+              </Button>
+              <Chip
+                label={status === 'running' ? 'Running' : status === 'starting' ? 'Starting' : 'Idle'}
+                color={status === 'running' ? 'success' : 'default'}
+                variant="outlined"
+                sx={{ borderColor: '#00E676', color: '#00E676' }}
+              />
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="relative">
-        <div className="sticky top-24">
-          <Card className="shadow-lg rounded-xl p-4">
-            <h3 className="text-lg font-semibold text-tutedude-800 mb-3">Live Events</h3>
-            <div className="max-h-[56vh] overflow-auto space-y-2">
-              {events.length === 0 ? <div className="text-sm text-gray-500">No events yet</div> :
-                events.map((ev, idx) => (
-                  <div key={idx} className="p-2 border rounded bg-white">
-                    <div className="flex justify-between"><div className="font-medium">{ev.type}</div>
-                      <div className="text-xs text-gray-400">{new Date(ev.timestamp).toLocaleTimeString()}</div>
+        {/* Live Events */}
+        <div className="relative">
+          <div className="sticky top-20">
+            <Card className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl p-4">
+              <Typography variant="h6" className="text-white mb-3">Live Events</Typography>
+              <Divider className="border-white/10 mb-3" />
+              <div className="max-h-[58vh] overflow-auto space-y-2 custom-scrollbar">
+                {events.length === 0 ? (
+                  <div className="text-gray-400 text-sm">No events yet</div>
+                ) : (
+                  events.map((ev, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition">
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-green-400">{ev.type}</span>
+                        <span className="text-xs text-gray-400">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <div className="text-xs text-gray-300 mt-1">{JSON.stringify(ev.details || {})}</div>
                     </div>
-                    <div className="text-xs mt-1 text-gray-600">{JSON.stringify(ev.details || {})}</div>
-                  </div>
-                ))
-              }
-            </div>
-          </Card>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
 
+      {/* Report Modal */}
       <Dialog open={reportModal.open} onClose={() => setReportModal({ open: false, pdf: null, csv: null })}>
         <DialogTitle>Report Ready</DialogTitle>
         <DialogContent>
           {reportModal.pdf ? <a href={`${API_BASE}${reportModal.pdf}`} target="_blank">Download PDF</a> : <div>No PDF</div>}<br />
           {reportModal.csv ? <a href={`${API_BASE}${reportModal.csv}`} target="_blank">Download CSV</a> : <div>No CSV</div>}
         </DialogContent>
-        <DialogActions><Button onClick={() => setReportModal({ open: false })}>Close</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={() => setReportModal({ open: false })}>Close</Button>
+        </DialogActions>
       </Dialog>
     </div>
   );

@@ -1,4 +1,3 @@
-// frontend/src/pages/AdminSession.jsx
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
