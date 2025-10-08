@@ -50,15 +50,16 @@ This package contains a **demo Interview Proctoring app** with a polished UI usi
 > Make sure your frontend `.env` points to the deployed backend:
 ```bash
 VITE_API_BASE=https://interview-proctoring-backend.onrender.com
----
+```
 
 ## Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/Venom3103/Interview-Proctoring.git
-cd Interview-Proctoring/frontend
+git clone https://github.com/Venom3103/Assignment.git
+cd Assignment/frontend
+cd Assignment/backend
 ```
 2. Install dependencies:
 
@@ -67,6 +68,7 @@ npm install
 ```
 
 3. Create a .env file :
+   
 Frontend (frontend/.env)
 ```bash
 VITE_API_BASE=http://localhost:4000
