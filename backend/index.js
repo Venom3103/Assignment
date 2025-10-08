@@ -19,7 +19,17 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/reports', express.static(path.join(__dirname, 'reports')));
 
-const upload = multer({ dest: path.join(__dirname, 'uploads/tmp') });
+const upload = multer({
+  dest: path.join(__dirname, 'uploads/tmp'),
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.includes('webm') && !file.mimetype.includes('mp4')) {
+      return cb(new Error('Only webm/mp4 allowed'), false);
+    }
+    cb(null, true);
+  }
+});
+
 
 const MONGO = process.env.MONGO_URI || 'mongodb://localhost:27017/interview_proctoring';
 mongoose.connect(MONGO).then(()=>console.log('MongoDB connected ✅')).catch(e=>console.error(e));
