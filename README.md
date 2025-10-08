@@ -44,8 +44,8 @@ This package contains a **demo Interview Proctoring app** with a polished UI usi
 
 ## Deployment Links
 
-- **Frontend (Live):** [https://interview-proctoring-frontend.vercel.app](https://interview-proctoring-frontend.vercel.app)  
-- **Backend (Live API):** [https://interview-proctoring-backend.onrender.com](https://interview-proctoring-backend.onrender.com)  
+- **Frontend (Live):** [https://my-assignment-tutedude.vercel.app/](https://my-assignment-tutedude.vercel.app/)  
+- **Backend (Live API):** [https://assignment-4c22.onrender.com)](https://assignment-4c22.onrender.com)  
 
 > Make sure your frontend `.env` points to the deployed backend:
 ```bash
