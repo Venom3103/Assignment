@@ -56,9 +56,10 @@ export default function Interview() {
 
         await tf.ready();
         modelObjRef.current = await cocoSsd.load();
+        // Create detector with maxFaces to enable multiple face detection
         modelFaceRef.current = await faceLandmarksDetection.createDetector(
           faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
-          { runtime: 'tfjs', modelType: 'full' }
+          { runtime: 'tfjs', modelType: 'full', maxFaces: 3 } // <-- added maxFaces
         );
 
         setModelsLoaded(true);
@@ -132,137 +133,202 @@ export default function Interview() {
     }
   }
 
-async function runDetectors() {
-  const video = videoRef.current;
-  const faceDetector = modelFaceRef.current;
-  const objModel = modelObjRef.current;
-  const canvas = canvasRef.current;
-  if (!video || !faceDetector || !objModel || !canvas) return;
-  const ctx = canvas.getContext('2d');
+  // ---------- UPDATED runDetectors (focus + multiple-face fixes) ----------
+  async function runDetectors() {
+    const video = videoRef.current;
+    const faceDetector = modelFaceRef.current;
+    const objModel = modelObjRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !faceDetector || !objModel || !canvas) return;
+    const ctx = canvas.getContext('2d');
 
-  // thresholds and state trackers
-  const NO_FACE_THRESHOLD = 3000; // 3 sec
-  const LOOK_AWAY_THRESHOLD = 0.045; // horizontal shift ratio
-  const LOOK_AWAY_TIME = 2500; // 2.5 sec away before logging focus lost
-  const FOCUS_REGAIN_TIME = 1000; // 1 sec stable before regaining
-  const OBJECT_INTERVAL = 1200; // ms between object detections
+    // thresholds and state trackers
+    const NO_FACE_THRESHOLD = 3000; // 3 sec
+    const LOOK_AWAY_THRESHOLD = 0.04; // horizontal shift ratio (sensitive)
+    const LOOK_AWAY_TIME = 1500; // 1.5 sec away before logging focus lost
+    const FOCUS_REGAIN_TIME = 800; // 0.8 sec stable before regaining
+    const OBJECT_INTERVAL = 1200; // ms between object detections
 
-  let lastTick = 0;
-  let isLookingAway = false;
-  let lookAwayStartTime = null;
-  let focusRegainTimer = null;
-  let focusLostLogged = false;
+    let lastTick = 0;
+    let isLookingAway = false;
+    let lookAwayStartTime = null;
+    let focusRegainTimer = null;
+    let focusLostLogged = false;
 
-  async function frame(now) {
-    if (now - lastTick < 200) { requestAnimationFrame(frame); return; }
-    lastTick = now;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    async function frame(now) {
+      if (now - lastTick < 200) { requestAnimationFrame(frame); return; }
+      lastTick = now;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    try {
-      const nowMs = Date.now();
-      const faces = await faceDetector.estimateFaces(video, { flipHorizontal: false });
+      try {
+        const nowMs = Date.now();
+        // estimateFaces returns array (we set maxFaces on creation)
+        const faces = await faceDetector.estimateFaces(video, { flipHorizontal: false });
 
-      if (!faces || faces.length === 0) {
-        // 🔹 No face detected
-        if (nowMs - lastFaceSeenAt.current > NO_FACE_THRESHOLD) {
-          console.log("⚠️ No face detected");
-          await postEvent("NO_FACE", { durationMs: nowMs - lastFaceSeenAt.current });
+        if (!faces || faces.length === 0) {
+          // 🔹 No face detected
+          if (nowMs - lastFaceSeenAt.current > NO_FACE_THRESHOLD) {
+            console.log("⚠️ No face detected");
+            await postEvent("NO_FACE", { durationMs: nowMs - lastFaceSeenAt.current });
+            lastFaceSeenAt.current = nowMs;
+          }
+          // reset focus flags
+          isLookingAway = false;
+          lookAwayStartTime = null;
+          focusLostLogged = false;
+          if (focusRegainTimer) { clearTimeout(focusRegainTimer); focusRegainTimer = null; }
+        } else {
+          // update last seen
           lastFaceSeenAt.current = nowMs;
-        }
-      } else {
-        // 🔹 Single face mode: ignore if more than one face
-        if (faces.length > 1) {
-          console.log("⚠️ Multiple faces detected but ignored (single-face mode)");
-        }
 
-        const face = faces[0];
-        lastFaceSeenAt.current = nowMs;
-
-        // Draw keypoints
-        ctx.beginPath();
-        face.keypoints.forEach((kp, i) => {
-          if (i === 0) ctx.moveTo(kp.x, kp.y);
-          else ctx.lineTo(kp.x, kp.y);
-        });
-        ctx.strokeStyle = "#00FFB2";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Focus logic
-        try {
-          const kp = face.keypoints;
-          const left = kp[33], right = kp[263], nose = kp[1] || kp[4];
-          const eyeMidX = (left.x + right.x) / 2;
-          const dx = (nose.x - eyeMidX) / video.videoWidth;
-
-          console.log(`🎯 dx = ${dx.toFixed(4)}`);
-
-          if (Math.abs(dx) > LOOK_AWAY_THRESHOLD) {
-            if (!isLookingAway) {
-              lookAwayStartTime = nowMs;
-              isLookingAway = true;
-              console.log("👀 Possible focus loss started...");
-            } else if (nowMs - lookAwayStartTime > LOOK_AWAY_TIME && !focusLostLogged) {
-              console.log("❌ Focus lost (user looked away)");
-              await postEvent("FOCUS_LOST", { dx, durationMs: nowMs - lookAwayStartTime });
-              focusLostLogged = true;
-            }
-          } else {
-            // back to focus
-            if (isLookingAway) {
-              if (!focusRegainTimer) {
-                focusRegainTimer = setTimeout(async () => {
-                  console.log("✅ Focus regained");
-                  await postEvent("FOCUS_REGAINED", { dx });
-                  isLookingAway = false;
-                  focusLostLogged = false;
-                  focusRegainTimer = null;
-                }, FOCUS_REGAIN_TIME);
+          // MULTIPLE FACES: if >1, post event (keeps single-face workflow otherwise)
+          if (faces.length > 1) {
+            console.log("⚠️ Multiple faces detected:", faces.length);
+            // send MULTIPLE_FACES event with count and do not continue focus logic on multiple faces
+            await postEvent("MULTIPLE_FACES", { count: faces.length });
+            // draw boxes for visual debugging
+            faces.forEach((f, idx) => {
+              // some detector implementations include boundingBox or keypoints -> try boundingBox first
+              if (f.box) {
+                const x = f.box.xMin || f.box.left || 0;
+                const y = f.box.yMin || f.box.top || 0;
+                const w = (f.box.xMax || (x + (f.box.width || 0))) - x;
+                const h = (f.box.yMax || (y + (f.box.height || 0))) - y;
+                ctx.strokeStyle = '#FF3B30';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, w, h);
+              } else if (f.boundingBox) {
+                const [x1, y1] = f.boundingBox.topLeft || [0, 0];
+                const [x2, y2] = f.boundingBox.bottomRight || [0, 0];
+                ctx.strokeStyle = '#FF3B30';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+              } else {
+                // fallback: draw keypoints
+                ctx.beginPath();
+                f.keypoints.forEach((kp, i) => i === 0 ? ctx.moveTo(kp.x, kp.y) : ctx.lineTo(kp.x, kp.y));
+                ctx.strokeStyle = '#FF3B30';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
               }
-            } else {
-              isLookingAway = false;
-              lookAwayStartTime = null;
+            });
+            // skip single-face focus detection when multiple faces present
+          } else {
+            // Single face path: compute focus/dx
+            const face = faces[0];
+
+            // draw keypoints for the detected face
+            try {
+              ctx.beginPath();
+              face.keypoints.forEach((kp, i) => {
+                if (i === 0) ctx.moveTo(kp.x, kp.y);
+                else ctx.lineTo(kp.x, kp.y);
+              });
+              ctx.strokeStyle = "#00FFB2";
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+            } catch (e) {
+              // ignore drawing errors
             }
-          }
-        } catch (err) {
-          console.log("⚠️ Focus logic error:", err.message);
-        }
-      }
 
-      // Object detection (every OBJECT_INTERVAL ms)
-      if (Date.now() - lastObjectDetectAt.current > OBJECT_INTERVAL) {
-        lastObjectDetectAt.current = Date.now();
-        const preds = await objModel.detect(video);
+       
+try {
+  const kp = face.keypoints;
 
-        preds.forEach(p => {
-          const [x, y, w, h] = p.bbox;
-          ctx.strokeStyle = "rgba(255, 60, 60, 0.8)";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x, y, w, h);
-          ctx.font = "14px Poppins";
-          ctx.fillStyle = "#FF3C3C";
-          ctx.fillText(p.class, x, y > 10 ? y - 6 : 10);
+  // Landmarks for left/right eye corners and nose tip
+  const leftEye = kp[33];   // left eye outer corner
+  const rightEye = kp[263]; // right eye outer corner
+  const nose = kp[1];       // nose tip
 
-          const label = p.class.toLowerCase();
-          if (
-            ["cell phone", "phone", "book", "notebook", "laptop", "tablet", "paper"].some(k =>
-              label.includes(k)
-            ) && p.score > 0.55
-          ) {
-            console.log("🚫 Unauthorized item detected:", p.class);
-            postEvent("UNAUTHORIZED_ITEM", { label: p.class, score: p.score, bbox: p.bbox });
-          }
-        });
-      }
-    } catch (err) {
-      console.log("⚠️ Detection error:", err.message);
+  // Compute midpoints
+  const midEyeX = (leftEye.x + rightEye.x) / 2;
+  const midEyeY = (leftEye.y + rightEye.y) / 2;
+
+  // Horizontal displacement (focus loss left/right)
+  const dx = (nose.x - midEyeX) / video.videoWidth;
+
+  // Vertical displacement (focus loss up/down)
+  const dy = (nose.y - midEyeY) / video.videoHeight;
+
+  // Calculate angular deviation magnitude
+  const deviation = Math.sqrt(dx * dx + dy * dy);
+
+  // Log values for debugging
+  console.log(`🎯 deviation = ${deviation.toFixed(4)} (dx=${dx.toFixed(4)}, dy=${dy.toFixed(4)})`);
+
+  // Adjusted sensitivity — higher = stricter
+  const DEVIATION_THRESHOLD = 0.035;
+
+  if (deviation > DEVIATION_THRESHOLD) {
+    if (!isLookingAway) {
+      lookAwayStartTime = nowMs;
+      isLookingAway = true;
+      console.log("👀 Possible focus loss started...");
+    } else if (nowMs - lookAwayStartTime > LOOK_AWAY_TIME && !focusLostLogged) {
+      console.log("❌ Focus lost (user looked away)");
+      await postEvent("FOCUS_LOST", { deviation, dx, dy, durationMs: nowMs - lookAwayStartTime });
+      focusLostLogged = true;
     }
-
-    requestAnimationFrame(frame);
+  } else {
+    if (isLookingAway && focusLostLogged) {
+      if (!focusRegainTimer) {
+        focusRegainTimer = setTimeout(async () => {
+          console.log("✅ Focus regained");
+          await postEvent("FOCUS_REGAINED", { deviation, dx, dy });
+          isLookingAway = false;
+          focusLostLogged = false;
+          focusRegainTimer = null;
+        }, FOCUS_REGAIN_TIME);
+      }
+    } else {
+      isLookingAway = false;
+      lookAwayStartTime = null;
+    }
   }
-  requestAnimationFrame(frame);
+} catch (err) {
+  console.log("⚠️ Focus logic error:", err.message);
 }
 
+          }
+        }
+
+        // Object detection (every OBJECT_INTERVAL ms)
+        if (Date.now() - lastObjectDetectAt.current > OBJECT_INTERVAL) {
+          lastObjectDetectAt.current = Date.now();
+          try {
+            const preds = await objModel.detect(video);
+            preds.forEach(p => {
+              const [x, y, w, h] = p.bbox;
+              ctx.strokeStyle = "rgba(255, 60, 60, 0.8)";
+              ctx.lineWidth = 2;
+              ctx.strokeRect(x, y, w, h);
+              ctx.font = "14px Poppins";
+              ctx.fillStyle = "#FF3C3C";
+              ctx.fillText(p.class, x, y > 10 ? y - 6 : 10);
+
+              const label = p.class.toLowerCase();
+              if (
+                ["cell phone", "phone", "book", "notebook", "laptop", "tablet", "paper"].some(k =>
+                  label.includes(k)
+                ) && p.score > 0.55
+              ) {
+                console.log("🚫 Unauthorized item detected:", p.class);
+                postEvent("UNAUTHORIZED_ITEM", { label: p.class, score: p.score, bbox: p.bbox });
+              }
+            });
+          } catch (odErr) {
+            console.log("⚠️ Object detect error:", odErr.message);
+          }
+        }
+      } catch (err) {
+        console.log("⚠️ Detection error:", err.message);
+      }
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  // ---------- end runDetectors ----------
 
   async function generateReportAndShow() {
     if (!sessionId) return;
