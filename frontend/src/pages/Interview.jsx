@@ -361,7 +361,9 @@ try {
                 {modelsLoaded ? 'Start Interview' : <CircularProgress size={18} sx={{ color: 'white' }} />}
               </Button>
               <Button variant="contained" color="error" onClick={endInterviewAndUpload}>End & Upload</Button>
-              <Button variant="contained" color="blue" onClick={generateReportAndShow}>Generate Report</Button>
+              <Button variant="contained" sx={{ color: 'white', borderColor: 'white' }} onClick={generateReportAndShow}>
+                Generate Report
+              </Button>
               <Chip
                 label={status === 'running' ? 'Running' : status === 'starting' ? 'Starting' : 'Idle'}
                 color={status === 'running' ? 'success' : 'default'}
